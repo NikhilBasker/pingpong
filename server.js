@@ -8,121 +8,237 @@ const io = socketio(server);
 
 const PORT = process.env.PORT || 3000;
 
-let players = {};
-let scores = { left: 0, right: 0 };
-let ball = {
-  x: 400 - 7.5,
-  y: 250 - 7.5,
-  vx: 5,
-  vy: 3,
-  size: 15
-};
-const paddleHeight = 100;
-const paddleWidth = 15;
+app.use(express.static(__dirname + '/public'));
 
-function resetBall(loser) {
-  ball.x = 400 - 7.5;
-  ball.y = 250 - 7.5;
-  // Ball moves toward the player who just lost the point
-  ball.vx = (loser === 'left' ? 1 : -1) * 5;
-  ball.vy = (Math.random() < 0.5 ? -1 : 1) * 3;
+const DEFAULT_WIN_SCORE = 10;
+const PADDLE_HEIGHT = 100;
+const PADDLE_WIDTH = 15;
+const BALL_SIZE = 15;
+const CANVAS_W = 800;
+const CANVAS_H = 500;
+const BIG_PADDLE_HEIGHT = 180;
+
+let games = {}; // roomCode -> game state
+
+function newGame(winScore) {
+  return {
+    players: {}, // socket.id -> 'left' or 'right'
+    sides: { left: null, right: null }, // socket.id
+    paddles: { left: CANVAS_H/2 - PADDLE_HEIGHT/2, right: CANVAS_H/2 - PADDLE_HEIGHT/2 },
+    scores: { left: 0, right: 0 },
+    winScore: winScore || DEFAULT_WIN_SCORE,
+    ball: {
+      x: CANVAS_W/2 - BALL_SIZE/2,
+      y: CANVAS_H/2 - BALL_SIZE/2,
+      vx: 5 * (Math.random() < 0.5 ? 1 : -1),
+      vy: 3 * (Math.random() < 0.5 ? 1 : -1),
+      size: BALL_SIZE
+    },
+    paused: false,
+    bigPaddleLeft: false,
+    bigPaddleRight: false,
+    powerupTimers: { left: null, right: null },
+    powerupInterval: null,
+    lastVisual: '',
+    gameOver: false
+  };
 }
 
-function updateGame() {
+function resetBall(game, loserSide) {
+  game.ball.x = CANVAS_W/2 - BALL_SIZE/2;
+  game.ball.y = CANVAS_H/2 - BALL_SIZE/2;
+  game.ball.vx = 5 * (loserSide === 'left' ? 1 : -1);
+  game.ball.vy = 3 * (Math.random() < 0.5 ? 1 : -1);
+}
+
+function startPowerupCycle(room, game) {
+  if (game.powerupInterval) clearInterval(game.powerupInterval);
+  game.powerupInterval = setInterval(() => {
+    if (game.gameOver || game.paused) return;
+    // Pick left or right randomly
+    let side = Math.random() < 0.5 ? 'left' : 'right';
+    game[`bigPaddle${side[0].toUpperCase() + side.slice(1)}`] = true;
+    io.in(room).emit('visual', 'bigPaddle');
+    setTimeout(() => {
+      game[`bigPaddle${side[0].toUpperCase() + side.slice(1)}`] = false;
+    }, 5000);
+  }, 30000); // Every 30 seconds
+}
+
+function stopPowerupCycle(game) {
+  if (game.powerupInterval) clearInterval(game.powerupInterval);
+  game.bigPaddleLeft = false;
+  game.bigPaddleRight = false;
+}
+
+function updateGame(room, game) {
+  if (game.paused || game.gameOver) return;
+
+  let ball = game.ball;
   ball.x += ball.vx;
   ball.y += ball.vy;
 
-  // Collide with top/bottom
-  if (ball.y <= 0 || ball.y + ball.size >= 500) ball.vy *= -1;
-
-  // Collide with left paddle
-  if (
-    ball.x <= 20 + paddleWidth &&
-    ball.y + ball.size >= players.left &&
-    ball.y <= players.left + paddleHeight
-  ) {
-    ball.vx *= -1;
-    ball.x = 20 + paddleWidth;
-    ball.vy += (Math.random() - 0.5) * 2;
+  // Collision with top/bottom
+  if (ball.y <= 0 || ball.y + ball.size >= CANVAS_H) {
+    ball.vy *= -1;
+    io.to(room).emit('visual', 'bounce');
   }
 
-  // Collide with right paddle
+  // Collision with left paddle
+  let paddleHLeft = game.bigPaddleLeft ? BIG_PADDLE_HEIGHT : PADDLE_HEIGHT;
   if (
-    ball.x + ball.size >= 765 &&
-    ball.y + ball.size >= players.right &&
-    ball.y <= players.right + paddleHeight
+    ball.x <= 20 + PADDLE_WIDTH &&
+    ball.y + ball.size >= game.paddles.left &&
+    ball.y <= game.paddles.left + paddleHLeft
   ) {
     ball.vx *= -1;
-    ball.x = 765 - ball.size;
+    ball.x = 20 + PADDLE_WIDTH;
     ball.vy += (Math.random() - 0.5) * 2;
+    io.to(room).emit('visual', 'bounce');
   }
 
-  // Score and reset if out
+  // Collision with right paddle
+  let paddleHRight = game.bigPaddleRight ? BIG_PADDLE_HEIGHT : PADDLE_HEIGHT;
+  if (
+    ball.x + ball.size >= CANVAS_W - 20 - PADDLE_WIDTH &&
+    ball.y + ball.size >= game.paddles.right &&
+    ball.y <= game.paddles.right + paddleHRight
+  ) {
+    ball.vx *= -1;
+    ball.x = CANVAS_W - 20 - PADDLE_WIDTH - ball.size;
+    ball.vy += (Math.random() - 0.5) * 2;
+    io.to(room).emit('visual', 'bounce');
+  }
+
+  // Score
   if (ball.x < 0) {
-    scores.right++;
-    resetBall('left');
+    game.scores.right++;
+    io.to(room).emit('visual', 'score');
+    resetBall(game, 'left');
   }
-  if (ball.x + ball.size > 800) {
-    scores.left++;
-    resetBall('right');
+  if (ball.x + ball.size > CANVAS_W) {
+    game.scores.left++;
+    io.to(room).emit('visual', 'score');
+    resetBall(game, 'right');
   }
+
+  // Speed up ball every 10 seconds
+  if (!game.lastSpeedup || Date.now() - game.lastSpeedup > 10000) {
+    ball.vx *= 1.10;
+    ball.vy *= 1.10;
+    game.lastSpeedup = Date.now();
+  }
+
+  // Win condition
+  if (!game.gameOver && (game.scores.left >= game.winScore || game.scores.right >= game.winScore)) {
+    game.gameOver = true;
+    stopPowerupCycle(game);
+    io.in(room).emit('gameState', {
+      ball: game.ball,
+      paddles: game.paddles,
+      scores: game.scores,
+      winScore: game.winScore,
+      bigPaddleLeft: game.bigPaddleLeft,
+      bigPaddleRight: game.bigPaddleRight
+    });
+    io.in(room).emit('visual', 'score');
+    return;
+  }
+
+  // Broadcast game state
+  io.in(room).emit('gameState', {
+    ball: game.ball,
+    paddles: game.paddles,
+    scores: game.scores,
+    winScore: game.winScore,
+    bigPaddleLeft: game.bigPaddleLeft,
+    bigPaddleRight: game.bigPaddleRight
+  });
 }
 
-// Ball speed increase logic
-let speedInterval = setInterval(() => {
-  // Only increase if game is active
-  if (players.left !== undefined && players.right !== undefined) {
-    // Increase speed by 15%
-    ball.vx *= 1.15;
-    ball.vy *= 1.15;
-  }
-}, 10000); // Every 10 seconds
-
+// Main update loop
 setInterval(() => {
-  // Only run game if both players are present
-  if (players.left !== undefined && players.right !== undefined) {
-    updateGame();
-    io.emit('gameState', {
-      ball,
-      paddles: { left: players.left, right: players.right },
-      scores
-    });
-  }
-}, 1000 / 60);
-
-// Serve static files (client)
-app.use(express.static(__dirname + '/public'));
+  Object.entries(games).forEach(([room, game]) => updateGame(room, game));
+}, 1000/60);
 
 io.on('connection', socket => {
-  // Assign player
-  let side;
-  if (players.left === undefined) {
-    side = 'left';
-    players.left = 200;
-  } else if (players.right === undefined) {
-    side = 'right';
-    players.right = 200;
-  } else {
-    side = 'spectator';
-  }
-  socket.emit('playerType', side);
+  let currentRoom = null;
+  let side = null;
 
-  // Send initial scores
-  socket.emit('gameState', {
-    ball,
-    paddles: { left: players.left, right: players.right },
-    scores
+  socket.on('joinRoom', ({ room, winScore }) => {
+    if (!room) room = Math.random().toString(36).substr(2, 6);
+    if (!games[room]) {
+      games[room] = newGame(winScore);
+      startPowerupCycle(room, games[room]);
+    }
+    currentRoom = room;
+    socket.join(room);
+
+    let game = games[room];
+    // Assign player sides
+    if (!game.sides.left) {
+      game.sides.left = socket.id;
+      game.players[socket.id] = 'left';
+      side = 'left';
+    } else if (!game.sides.right) {
+      game.sides.right = socket.id;
+      game.players[socket.id] = 'right';
+      side = 'right';
+    } else {
+      game.players[socket.id] = 'spectator';
+      side = 'spectator';
+    }
+    socket.emit('playerType', side);
+
+    // Initial state
+    socket.emit('gameState', {
+      ball: game.ball,
+      paddles: game.paddles,
+      scores: game.scores,
+      winScore: game.winScore,
+      bigPaddleLeft: game.bigPaddleLeft,
+      bigPaddleRight: game.bigPaddleRight
+    });
   });
 
-  // Receive paddle position
-  socket.on('paddleMove', y => {
-    if (side === 'left') players.left = y;
-    if (side === 'right') players.right = y;
+  socket.on('paddleMove', ({ y, room }) => {
+    if (!games[room]) return;
+    let game = games[room];
+    let moveSide = game.players[socket.id];
+    if (moveSide === 'left' || moveSide === 'right') {
+      // Clamp paddle
+      let paddleH = (moveSide === 'left' ? game.bigPaddleLeft : game.bigPaddleRight) ? BIG_PADDLE_HEIGHT : PADDLE_HEIGHT;
+      y = Math.max(0, Math.min(CANVAS_H - paddleH, y));
+      game.paddles[moveSide] = y;
+    }
+  });
+
+  socket.on('togglePause', ({ room, paused }) => {
+    if (!games[room]) return;
+    games[room].paused = paused;
+    io.in(room).emit('pauseState', paused);
+  });
+
+  socket.on('restartGame', room => {
+    if (!games[room]) return;
+    let winScore = games[room].winScore;
+    games[room] = newGame(winScore);
+    startPowerupCycle(room, games[room]);
   });
 
   socket.on('disconnect', () => {
-    if (side === 'left') delete players.left;
-    if (side === 'right') delete players.right;
+    if (currentRoom && games[currentRoom]) {
+      let game = games[currentRoom];
+      let leaveSide = game.players[socket.id];
+      if (leaveSide === 'left') game.sides.left = null;
+      if (leaveSide === 'right') game.sides.right = null;
+      delete game.players[socket.id];
+      // Remove game if no players left
+      if (!game.sides.left && !game.sides.right) {
+        stopPowerupCycle(game);
+        delete games[currentRoom];
+      }
+    }
   });
 });
 
