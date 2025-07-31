@@ -9,6 +9,7 @@ const io = socketio(server);
 const PORT = process.env.PORT || 3000;
 
 let players = {};
+let scores = { left: 0, right: 0 };
 let ball = {
   x: 400 - 7.5,
   y: 250 - 7.5,
@@ -19,10 +20,11 @@ let ball = {
 const paddleHeight = 100;
 const paddleWidth = 15;
 
-function resetBall() {
+function resetBall(loser) {
   ball.x = 400 - 7.5;
   ball.y = 250 - 7.5;
-  ball.vx = (Math.random() < 0.5 ? -1 : 1) * 5;
+  // Ball moves toward the player who just lost the point
+  ball.vx = (loser === 'left' ? 1 : -1) * 5;
   ball.vy = (Math.random() < 0.5 ? -1 : 1) * 3;
 }
 
@@ -55,9 +57,26 @@ function updateGame() {
     ball.vy += (Math.random() - 0.5) * 2;
   }
 
-  // Reset if out
-  if (ball.x < 0 || ball.x + ball.size > 800) resetBall();
+  // Score and reset if out
+  if (ball.x < 0) {
+    scores.right++;
+    resetBall('left');
+  }
+  if (ball.x + ball.size > 800) {
+    scores.left++;
+    resetBall('right');
+  }
 }
+
+// Ball speed increase logic
+let speedInterval = setInterval(() => {
+  // Only increase if game is active
+  if (players.left !== undefined && players.right !== undefined) {
+    // Increase speed by 15%
+    ball.vx *= 1.15;
+    ball.vy *= 1.15;
+  }
+}, 10000); // Every 10 seconds
 
 setInterval(() => {
   // Only run game if both players are present
@@ -65,7 +84,8 @@ setInterval(() => {
     updateGame();
     io.emit('gameState', {
       ball,
-      paddles: { left: players.left, right: players.right }
+      paddles: { left: players.left, right: players.right },
+      scores
     });
   }
 }, 1000 / 60);
@@ -86,6 +106,13 @@ io.on('connection', socket => {
     side = 'spectator';
   }
   socket.emit('playerType', side);
+
+  // Send initial scores
+  socket.emit('gameState', {
+    ball,
+    paddles: { left: players.left, right: players.right },
+    scores
+  });
 
   // Receive paddle position
   socket.on('paddleMove', y => {
