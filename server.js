@@ -30,7 +30,7 @@ function newGame(winScore, difficulty) {
   const params = getDifficultyParams(difficulty);
   return {
     difficulty: difficulty || "medium",
-    players: {}, // socket.id -> 'left'/'right'/'spectator'
+    players: {},
     sides: { left: null, right: null },
     paddles: { left: CANVAS_H/2 - params.paddleHeight/2, right: CANVAS_H/2 - params.paddleHeight/2 },
     scores: { left: 0, right: 0 },
@@ -65,14 +65,13 @@ function startPowerupCycle(room, game) {
   if (game.powerupInterval) clearInterval(game.powerupInterval);
   game.powerupInterval = setInterval(() => {
     if (game.gameOver || game.paused) return;
-    // Pick left or right randomly
     let side = Math.random() < 0.5 ? 'left' : 'right';
     game[`bigPaddle${side[0].toUpperCase() + side.slice(1)}`] = true;
     io.in(room).emit('visual', 'bigPaddle');
     setTimeout(() => {
       game[`bigPaddle${side[0].toUpperCase() + side.slice(1)}`] = false;
     }, 5000);
-  }, 30000); // Every 30 seconds
+  }, 30000);
 }
 
 function stopPowerupCycle(game) {
@@ -156,7 +155,6 @@ function updateGame(room, game) {
     return;
   }
 
-  // Broadcast game state
   io.in(room).emit('gameState', {
     ball: game.ball,
     paddles: game.paddles,
@@ -168,7 +166,6 @@ function updateGame(room, game) {
   });
 }
 
-// Main update loop
 setInterval(() => {
   Object.entries(games).forEach(([room, game]) => updateGame(room, game));
 }, 1000/60);
@@ -187,7 +184,6 @@ io.on('connection', socket => {
     socket.join(room);
 
     let game = games[room];
-    // Assign player sides
     if (!game.sides.left) {
       game.sides.left = socket.id;
       game.players[socket.id] = 'left';
@@ -202,7 +198,6 @@ io.on('connection', socket => {
     }
     socket.emit('playerType', side);
 
-    // Initial state
     socket.emit('gameState', {
       ball: game.ball,
       paddles: game.paddles,
@@ -219,7 +214,6 @@ io.on('connection', socket => {
     let game = games[room];
     let moveSide = game.players[socket.id];
     if (moveSide === 'left' || moveSide === 'right') {
-      // Clamp paddle
       let paddleH = (moveSide === 'left' ? game.bigPaddleLeft : game.bigPaddleRight) ? game.paddleHeight * 1.8 : game.paddleHeight;
       y = Math.max(0, Math.min(CANVAS_H - paddleH, y));
       game.paddles[moveSide] = y;
@@ -247,7 +241,6 @@ io.on('connection', socket => {
       if (leaveSide === 'left') game.sides.left = null;
       if (leaveSide === 'right') game.sides.right = null;
       delete game.players[socket.id];
-      // Remove game if no players left
       if (!game.sides.left && !game.sides.right) {
         stopPowerupCycle(game);
         delete games[currentRoom];
