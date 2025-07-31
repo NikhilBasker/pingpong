@@ -11,7 +11,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 80vh;
+  height: 70vh;
 }
 
 #pongCanvas {
@@ -19,4 +19,10 @@ body {
   border: 3px solid #fff;
   display: block;
   margin: 0 auto;
+}
+
+#scoreboard {
+  font-size: 2.5em;
+  margin-bottom: 10px;
+  letter-spacing: 10px;
 }
