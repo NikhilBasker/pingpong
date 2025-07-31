@@ -15,6 +15,7 @@ const bounceAudio = document.getElementById('bounceSound');
 const scoreAudio = document.getElementById('scoreSound');
 const roomInput = document.getElementById('roomInput');
 const winScoreInput = document.getElementById('winScoreInput');
+const difficultyInput = document.getElementById('difficultyInput');
 const joinBtn = document.getElementById('joinBtn');
 
 let playerType = null;
@@ -24,10 +25,9 @@ let scores = { left: 0, right: 0 };
 let winScore = 10;
 let paused = false;
 let bigPaddle = { left: false, right: false };
-let bigPaddleTimeout = { left: null, right: null };
 let room = null;
+let difficulty = "medium";
 
-// Responsive canvas sizing
 function resizeCanvas() {
   let w = Math.min(window.innerWidth * 0.98, 800);
   let h = Math.min(window.innerHeight * 0.60, 500);
@@ -44,27 +44,34 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// Paddle and ball sizes scale with canvas
 function getPaddleWidth() { return Math.max(canvas.width * 0.018, 10); }
 function getPaddleHeight(big = false) {
-  if (big) return Math.max(canvas.height * 0.36, 120);
-  return Math.max(canvas.height * 0.18, 60);
+  let base;
+  if (difficulty === "easy") base = canvas.height * 0.25;
+  else if (difficulty === "hard") base = canvas.height * 0.12;
+  else base = canvas.height * 0.18;
+  if (big) base *= 1.8;
+  return Math.max(base, 40);
 }
-function getBallSize() { return Math.max(canvas.width * 0.018, 10); }
+function getBallSize() {
+  if (difficulty === "easy") return Math.max(canvas.width * 0.022, 12);
+  if (difficulty === "hard") return Math.max(canvas.width * 0.015, 8);
+  return Math.max(canvas.width * 0.018, 10);
+}
 
 const socket = io();
 
 function joinRoom() {
   room = roomInput.value.trim() || Math.random().toString(36).substr(2, 6);
   winScore = parseInt(winScoreInput.value) || 10;
+  difficulty = difficultyInput.value || "medium";
   menu.style.display = "none";
   gameUI.style.display = "";
-  socket.emit("joinRoom", { room, winScore });
+  socket.emit("joinRoom", { room, winScore, difficulty });
   info.textContent = "Waiting for another player...";
 }
 joinBtn.onclick = joinRoom;
 
-// Listen for player assignment
 socket.on('playerType', type => {
   playerType = type;
   if (type === 'left') info.textContent = "You are Player 1 (left paddle)";
@@ -72,7 +79,6 @@ socket.on('playerType', type => {
   else info.textContent = "You are a spectator";
 });
 
-// Listen for game state
 socket.on('gameState', state => {
   let scaleX = canvas.width / 800;
   let scaleY = canvas.height / 500;
@@ -87,10 +93,12 @@ socket.on('gameState', state => {
   };
   scores = state.scores;
   winScore = state.winScore || winScore;
+  difficulty = state.difficulty || "medium";
   scoreLeft.textContent = scores.left;
   scoreRight.textContent = scores.right;
+  bigPaddle.left = !!state.bigPaddleLeft;
+  bigPaddle.right = !!state.bigPaddleRight;
 
-  // End of game
   if (scores.left >= winScore || scores.right >= winScore) {
     endGame.style.display = "";
     winnerMsg.textContent =
@@ -104,10 +112,6 @@ socket.on('gameState', state => {
     restartBtn.style.display = "";
     restartBtn2.style.display = "none";
   }
-
-  // Power-up state
-  bigPaddle.left = !!state.bigPaddleLeft;
-  bigPaddle.right = !!state.bigPaddleRight;
 });
 
 socket.on('visual', msg => {
@@ -133,7 +137,6 @@ function requestRestart() {
 restartBtn.onclick = requestRestart;
 restartBtn2.onclick = requestRestart;
 
-// Pause/Resume
 pauseBtn.onclick = () => {
   paused = !paused;
   pauseBtn.textContent = paused ? "Resume" : "Pause";
@@ -144,13 +147,11 @@ socket.on("pauseState", (isPaused) => {
   pauseBtn.textContent = paused ? "Resume" : "Pause";
 });
 
-// Fullscreen
 fullscreenBtn.onclick = () => {
   if (canvas.requestFullscreen) canvas.requestFullscreen();
   else if (canvas.webkitRequestFullscreen) canvas.webkitRequestFullscreen();
 };
 
-// Mouse controls
 canvas.addEventListener('mousemove', function(e) {
   if (playerType === 'spectator' || paused) return;
   const rect = canvas.getBoundingClientRect();
@@ -160,7 +161,6 @@ canvas.addEventListener('mousemove', function(e) {
   socket.emit('paddleMove', { y: scaledY, room });
 });
 
-// Touch controls
 canvas.addEventListener('touchstart', handleTouch, { passive: false });
 canvas.addEventListener('touchmove', handleTouch, { passive: false });
 
@@ -181,7 +181,6 @@ function handleTouch(e) {
   }
 }
 
-// Visual feedback
 function flashPaddle() {
   canvas.classList.add("flash-paddle");
   setTimeout(() => canvas.classList.remove("flash-paddle"), 80);
@@ -191,7 +190,6 @@ function flashScreen() {
   setTimeout(() => document.body.classList.remove("flash-screen"), 200);
 }
 
-// Drawing
 function drawRect(x, y, w, h, color) {
   ctx.fillStyle = color;
   ctx.fillRect(x, y, w, h);
@@ -206,7 +204,6 @@ function drawCircle(x, y, r, color) {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Middle line
   ctx.setLineDash([10, 10]);
   ctx.strokeStyle = "#fff";
   ctx.beginPath();
@@ -215,14 +212,12 @@ function draw() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Left paddle
   drawRect(Math.max(canvas.width * 0.025, 10),
     paddles.left,
     getPaddleWidth(),
     getPaddleHeight(bigPaddle.left),
     bigPaddle.left ? "#55ff99" : "#00ff99"
   );
-  // Right paddle
   drawRect(
     canvas.width - getPaddleWidth() - Math.max(canvas.width * 0.025, 10),
     paddles.right,
@@ -230,7 +225,6 @@ function draw() {
     getPaddleHeight(bigPaddle.right),
     bigPaddle.right ? "#ff88cc" : "#ff3366"
   );
-  // Ball
   drawCircle(ball.x + ball.size/2, ball.y + ball.size/2, ball.size/2, "#fff");
 }
 function gameLoop() {
