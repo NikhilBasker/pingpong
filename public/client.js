@@ -1,12 +1,15 @@
 const canvas = document.getElementById('pongCanvas');
 const ctx = canvas.getContext('2d');
 const info = document.getElementById('info');
+const scoreLeft = document.getElementById('scoreLeft');
+const scoreRight = document.getElementById('scoreRight');
 const PADDLE_WIDTH = 15, PADDLE_HEIGHT = 100;
 const PLAYER_X = 20, RIGHT_X = canvas.width - 20 - PADDLE_WIDTH;
 
 let playerType = null;
 let paddles = { left: 200, right: 200 };
 let ball = { x: 400, y: 250, size: 15 };
+let scores = { left: 0, right: 0 };
 
 const socket = io();
 
@@ -20,13 +23,15 @@ socket.on('playerType', type => {
 socket.on('gameState', state => {
   ball = state.ball;
   paddles = state.paddles;
+  scores = state.scores;
+  scoreLeft.textContent = scores.left;
+  scoreRight.textContent = scores.right;
 });
 
 canvas.addEventListener('mousemove', function(e) {
   if (playerType === 'spectator') return;
   const rect = canvas.getBoundingClientRect();
   let mouseY = e.clientY - rect.top;
-  // Clamp paddle
   mouseY = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, mouseY - PADDLE_HEIGHT/2));
   socket.emit('paddleMove', mouseY);
 });
