@@ -21,6 +21,19 @@ const mobileControls = document.getElementById('mobileControls');
 const moveUpBtn = document.getElementById('moveUpBtn');
 const moveDownBtn = document.getElementById('moveDownBtn');
 
+// --- Room details UI ---
+let roomDetailsEl = document.getElementById('roomDetails');
+if (!roomDetailsEl) {
+  roomDetailsEl = document.createElement('div');
+  roomDetailsEl.id = 'roomDetails';
+  roomDetailsEl.style.marginBottom = '10px';
+  roomDetailsEl.style.fontSize = '1.1em';
+  roomDetailsEl.style.fontWeight = 'bold';
+  roomDetailsEl.style.color = '#00ff99';
+  gameUI.insertBefore(roomDetailsEl, gameUI.firstChild);
+  roomDetailsEl.style.display = 'none';
+}
+
 let playerType = null;
 let paddles = { left: 200, right: 200 };
 let ball = { x: 400, y: 250, size: 15 };
@@ -76,6 +89,11 @@ function joinRoom() {
   gameUI.style.display = "";
   socket.emit("joinRoom", { room, winScore, difficulty });
   info.textContent = "Waiting for another player...";
+
+  // Show room details
+  roomDetailsEl.innerHTML =
+    `Room: <span style="color:#fff;background:#222;padding:2px 7px;border-radius:4px;">${room}</span> &nbsp;|&nbsp; Win Score: <span style="color:#fff;">${winScore}</span> &nbsp;|&nbsp; Difficulty: <span style="color:#fff;">${difficulty.charAt(0).toUpperCase()+difficulty.slice(1)}</span>`;
+  roomDetailsEl.style.display = '';
 }
 joinBtn.onclick = joinRoom;
 
@@ -108,6 +126,11 @@ socket.on('gameState', state => {
   bigPaddle.left = !!state.bigPaddleLeft;
   bigPaddle.right = !!state.bigPaddleRight;
   currentPaddleY = paddles[playerType] || currentPaddleY;
+
+  // Update room details if settings changed
+  roomDetailsEl.innerHTML =
+    `Room: <span style="color:#fff;background:#222;padding:2px 7px;border-radius:4px;">${room}</span> &nbsp;|&nbsp; Win Score: <span style="color:#fff;">${winScore}</span> &nbsp;|&nbsp; Difficulty: <span style="color:#fff;">${difficulty.charAt(0).toUpperCase()+difficulty.slice(1)}</span>`;
+  roomDetailsEl.style.display = '';
 
   if (scores.left >= winScore || scores.right >= winScore) {
     endGame.style.display = "";
