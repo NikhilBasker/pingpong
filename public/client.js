@@ -28,6 +28,7 @@ socket.on('gameState', state => {
   scoreRight.textContent = scores.right;
 });
 
+// Mouse controls
 canvas.addEventListener('mousemove', function(e) {
   if (playerType === 'spectator') return;
   const rect = canvas.getBoundingClientRect();
@@ -35,6 +36,27 @@ canvas.addEventListener('mousemove', function(e) {
   mouseY = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, mouseY - PADDLE_HEIGHT/2));
   socket.emit('paddleMove', mouseY);
 });
+
+// Touch controls for mobile/tablet
+canvas.addEventListener('touchstart', handleTouch, { passive: false });
+canvas.addEventListener('touchmove', handleTouch, { passive: false });
+
+function handleTouch(e) {
+  if (playerType === 'spectator') return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  for (let i = 0; i < e.touches.length; i++) {
+    const touch = e.touches[i];
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    let paddleY = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, y - PADDLE_HEIGHT/2));
+    // Only move paddle if player touches correct side
+    if ((playerType === 'left' && x < canvas.width / 2) ||
+        (playerType === 'right' && x >= canvas.width / 2)) {
+      socket.emit('paddleMove', paddleY);
+    }
+  }
+}
 
 function drawRect(x, y, w, h, color) {
   ctx.fillStyle = color;
