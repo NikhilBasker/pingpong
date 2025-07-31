@@ -17,6 +17,9 @@ const roomInput = document.getElementById('roomInput');
 const winScoreInput = document.getElementById('winScoreInput');
 const difficultyInput = document.getElementById('difficultyInput');
 const joinBtn = document.getElementById('joinBtn');
+const mobileControls = document.getElementById('mobileControls');
+const moveUpBtn = document.getElementById('moveUpBtn');
+const moveDownBtn = document.getElementById('moveDownBtn');
 
 let playerType = null;
 let paddles = { left: 200, right: 200 };
@@ -27,7 +30,9 @@ let paused = false;
 let bigPaddle = { left: false, right: false };
 let room = null;
 let difficulty = "medium";
+let currentPaddleY = 200;
 
+// Responsive canvas sizing
 function resizeCanvas() {
   let w = Math.min(window.innerWidth * 0.98, 800);
   let h = Math.min(window.innerHeight * 0.60, 500);
@@ -44,6 +49,7 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
+// Paddle and ball sizes based on difficulty
 function getPaddleWidth() { return Math.max(canvas.width * 0.018, 10); }
 function getPaddleHeight(big = false) {
   let base;
@@ -59,6 +65,7 @@ function getBallSize() {
   return Math.max(canvas.width * 0.018, 10);
 }
 
+// Room join
 const socket = io();
 
 function joinRoom() {
@@ -72,6 +79,7 @@ function joinRoom() {
 }
 joinBtn.onclick = joinRoom;
 
+// Player type
 socket.on('playerType', type => {
   playerType = type;
   if (type === 'left') info.textContent = "You are Player 1 (left paddle)";
@@ -79,6 +87,7 @@ socket.on('playerType', type => {
   else info.textContent = "You are a spectator";
 });
 
+// Game state
 socket.on('gameState', state => {
   let scaleX = canvas.width / 800;
   let scaleY = canvas.height / 500;
@@ -98,6 +107,7 @@ socket.on('gameState', state => {
   scoreRight.textContent = scores.right;
   bigPaddle.left = !!state.bigPaddleLeft;
   bigPaddle.right = !!state.bigPaddleRight;
+  currentPaddleY = paddles[playerType] || currentPaddleY;
 
   if (scores.left >= winScore || scores.right >= winScore) {
     endGame.style.display = "";
@@ -158,6 +168,7 @@ canvas.addEventListener('mousemove', function(e) {
   let mouseY = e.clientY - rect.top;
   let paddleY = Math.max(0, Math.min(canvas.height - getPaddleHeight(bigPaddle[playerType]), mouseY - getPaddleHeight(bigPaddle[playerType])/2));
   let scaledY = paddleY * 500 / canvas.height;
+  currentPaddleY = paddleY;
   socket.emit('paddleMove', { y: scaledY, room });
 });
 
@@ -174,11 +185,53 @@ function handleTouch(e) {
     const y = touch.clientY - rect.top;
     let paddleY = Math.max(0, Math.min(canvas.height - getPaddleHeight(bigPaddle[playerType]), y - getPaddleHeight(bigPaddle[playerType])/2));
     let scaledY = paddleY * 500 / canvas.height;
+    currentPaddleY = paddleY;
     if ((playerType === 'left' && x < canvas.width / 2) ||
         (playerType === 'right' && x >= canvas.width / 2)) {
       socket.emit('paddleMove', { y: scaledY, room });
     }
   }
+}
+
+// Mobile control pad detection
+function isMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+function updateMobileControls() {
+  if (isMobile()) {
+    mobileControls.style.display = '';
+  } else {
+    mobileControls.style.display = 'none';
+  }
+}
+window.addEventListener('resize', updateMobileControls);
+updateMobileControls();
+
+// Mobile pad handlers
+moveUpBtn.addEventListener('touchstart', e => {
+  e.preventDefault();
+  movePaddle(-1);
+});
+moveDownBtn.addEventListener('touchstart', e => {
+  e.preventDefault();
+  movePaddle(1);
+});
+moveUpBtn.addEventListener('mousedown', e => {
+  e.preventDefault();
+  movePaddle(-1);
+});
+moveDownBtn.addEventListener('mousedown', e => {
+  e.preventDefault();
+  movePaddle(1);
+});
+
+function movePaddle(direction) {
+  if (playerType === 'spectator' || paused) return;
+  let step = canvas.height * 0.06;
+  let newY = Math.max(0, Math.min(canvas.height - getPaddleHeight(bigPaddle[playerType]), currentPaddleY + direction * step));
+  currentPaddleY = newY;
+  let scaledY = newY * 500 / canvas.height;
+  socket.emit('paddleMove', { y: scaledY, room });
 }
 
 function flashPaddle() {
