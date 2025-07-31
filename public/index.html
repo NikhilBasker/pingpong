@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Upgraded Pong Multiplayer</title>
+  <title>Pong V5 Multiplayer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Upgraded Pong</h1>
+  <h1>Pong V5</h1>
   <div id="menu">
     <label>Room Code: <input type="text" id="roomInput" placeholder="(auto)" maxlength="10"></label>
     <label>Win Score: <input type="number" id="winScoreInput" min="1" max="50" value="10"></label>
@@ -32,6 +32,10 @@
     </div>
     <div id="gameContainer">
       <canvas id="pongCanvas" width="800" height="500"></canvas>
+    </div>
+    <div id="mobileControls" style="display:none;">
+      <button id="moveUpBtn">▲</button>
+      <button id="moveDownBtn">▼</button>
     </div>
     <div id="endGame" style="display:none;">
       <h2 id="winnerMsg"></h2>
