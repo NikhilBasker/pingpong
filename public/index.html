@@ -2,18 +2,37 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Online Pong Multiplayer</title>
+  <title>Upgraded Pong Multiplayer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Online Pong</h1>
-  <p id="info">Connecting...</p>
-  <div id="scoreboard">
-    <span id="scoreLeft">0</span> : <span id="scoreRight">0</span>
+  <h1>Upgraded Pong</h1>
+  <div id="menu">
+    <label>Room Code: <input type="text" id="roomInput" placeholder="(auto)" maxlength="10"></label>
+    <label>Win Score: <input type="number" id="winScoreInput" min="1" max="50" value="10"></label>
+    <button id="joinBtn">Join Game</button>
   </div>
-  <div id="gameContainer">
-    <canvas id="pongCanvas" width="800" height="500"></canvas>
+  <div id="gameUI" style="display:none;">
+    <div id="scoreboard">
+      <span id="scoreLeft">0</span> : <span id="scoreRight">0</span>
+    </div>
+    <p id="info">Connecting...</p>
+    <div id="buttons">
+      <button id="pauseBtn">Pause</button>
+      <button id="fullscreenBtn">Fullscreen</button>
+      <button id="restartBtn" style="display:none;">Restart</button>
+    </div>
+    <div id="gameContainer">
+      <canvas id="pongCanvas" width="800" height="500"></canvas>
+    </div>
+    <div id="endGame" style="display:none;">
+      <h2 id="winnerMsg"></h2>
+      <button id="restartBtn2">Play Again</button>
+    </div>
   </div>
+  <audio id="bounceSound" src="bounce.wav" preload="auto"></audio>
+  <audio id="scoreSound" src="score.wav" preload="auto"></audio>
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
 </body>
