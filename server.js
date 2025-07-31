@@ -11,44 +11,54 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(__dirname + '/public'));
 
 const DEFAULT_WIN_SCORE = 10;
-const PADDLE_HEIGHT = 100;
-const PADDLE_WIDTH = 15;
-const BALL_SIZE = 15;
 const CANVAS_W = 800;
 const CANVAS_H = 500;
-const BIG_PADDLE_HEIGHT = 180;
+
+function getDifficultyParams(level = "medium") {
+  if (level === "easy") {
+    return { paddleHeight: 125, ballSpeed: 4, ballSize: 18 };
+  } else if (level === "hard") {
+    return { paddleHeight: 60, ballSpeed: 7, ballSize: 10 };
+  } else { // medium
+    return { paddleHeight: 100, ballSpeed: 5.5, ballSize: 14 };
+  }
+}
 
 let games = {}; // roomCode -> game state
 
-function newGame(winScore) {
+function newGame(winScore, difficulty) {
+  const params = getDifficultyParams(difficulty);
   return {
-    players: {}, // socket.id -> 'left' or 'right'
-    sides: { left: null, right: null }, // socket.id
-    paddles: { left: CANVAS_H/2 - PADDLE_HEIGHT/2, right: CANVAS_H/2 - PADDLE_HEIGHT/2 },
+    difficulty: difficulty || "medium",
+    players: {}, // socket.id -> 'left'/'right'/'spectator'
+    sides: { left: null, right: null },
+    paddles: { left: CANVAS_H/2 - params.paddleHeight/2, right: CANVAS_H/2 - params.paddleHeight/2 },
     scores: { left: 0, right: 0 },
     winScore: winScore || DEFAULT_WIN_SCORE,
     ball: {
-      x: CANVAS_W/2 - BALL_SIZE/2,
-      y: CANVAS_H/2 - BALL_SIZE/2,
-      vx: 5 * (Math.random() < 0.5 ? 1 : -1),
-      vy: 3 * (Math.random() < 0.5 ? 1 : -1),
-      size: BALL_SIZE
+      x: CANVAS_W/2 - params.ballSize/2,
+      y: CANVAS_H/2 - params.ballSize/2,
+      vx: params.ballSpeed * (Math.random() < 0.5 ? 1 : -1),
+      vy: (params.ballSpeed - 1.5) * (Math.random() < 0.5 ? 1 : -1),
+      size: params.ballSize
     },
+    paddleHeight: params.paddleHeight,
+    ballSpeed: params.ballSpeed,
+    ballSize: params.ballSize,
     paused: false,
     bigPaddleLeft: false,
     bigPaddleRight: false,
-    powerupTimers: { left: null, right: null },
     powerupInterval: null,
-    lastVisual: '',
+    lastSpeedup: null,
     gameOver: false
   };
 }
 
 function resetBall(game, loserSide) {
-  game.ball.x = CANVAS_W/2 - BALL_SIZE/2;
-  game.ball.y = CANVAS_H/2 - BALL_SIZE/2;
-  game.ball.vx = 5 * (loserSide === 'left' ? 1 : -1);
-  game.ball.vy = 3 * (Math.random() < 0.5 ? 1 : -1);
+  game.ball.x = CANVAS_W/2 - game.ballSize/2;
+  game.ball.y = CANVAS_H/2 - game.ballSize/2;
+  game.ball.vx = game.ballSpeed * (loserSide === 'left' ? 1 : -1);
+  game.ball.vy = (game.ballSpeed - 1.5) * (Math.random() < 0.5 ? 1 : -1);
 }
 
 function startPowerupCycle(room, game) {
@@ -85,27 +95,27 @@ function updateGame(room, game) {
   }
 
   // Collision with left paddle
-  let paddleHLeft = game.bigPaddleLeft ? BIG_PADDLE_HEIGHT : PADDLE_HEIGHT;
+  let paddleHLeft = game.bigPaddleLeft ? game.paddleHeight * 1.8 : game.paddleHeight;
   if (
-    ball.x <= 20 + PADDLE_WIDTH &&
+    ball.x <= 20 + 15 &&
     ball.y + ball.size >= game.paddles.left &&
     ball.y <= game.paddles.left + paddleHLeft
   ) {
     ball.vx *= -1;
-    ball.x = 20 + PADDLE_WIDTH;
+    ball.x = 20 + 15;
     ball.vy += (Math.random() - 0.5) * 2;
     io.to(room).emit('visual', 'bounce');
   }
 
   // Collision with right paddle
-  let paddleHRight = game.bigPaddleRight ? BIG_PADDLE_HEIGHT : PADDLE_HEIGHT;
+  let paddleHRight = game.bigPaddleRight ? game.paddleHeight * 1.8 : game.paddleHeight;
   if (
-    ball.x + ball.size >= CANVAS_W - 20 - PADDLE_WIDTH &&
+    ball.x + ball.size >= CANVAS_W - 20 - 15 &&
     ball.y + ball.size >= game.paddles.right &&
     ball.y <= game.paddles.right + paddleHRight
   ) {
     ball.vx *= -1;
-    ball.x = CANVAS_W - 20 - PADDLE_WIDTH - ball.size;
+    ball.x = CANVAS_W - 20 - 15 - ball.size;
     ball.vy += (Math.random() - 0.5) * 2;
     io.to(room).emit('visual', 'bounce');
   }
@@ -139,7 +149,8 @@ function updateGame(room, game) {
       scores: game.scores,
       winScore: game.winScore,
       bigPaddleLeft: game.bigPaddleLeft,
-      bigPaddleRight: game.bigPaddleRight
+      bigPaddleRight: game.bigPaddleRight,
+      difficulty: game.difficulty
     });
     io.in(room).emit('visual', 'score');
     return;
@@ -152,7 +163,8 @@ function updateGame(room, game) {
     scores: game.scores,
     winScore: game.winScore,
     bigPaddleLeft: game.bigPaddleLeft,
-    bigPaddleRight: game.bigPaddleRight
+    bigPaddleRight: game.bigPaddleRight,
+    difficulty: game.difficulty
   });
 }
 
@@ -165,10 +177,10 @@ io.on('connection', socket => {
   let currentRoom = null;
   let side = null;
 
-  socket.on('joinRoom', ({ room, winScore }) => {
+  socket.on('joinRoom', ({ room, winScore, difficulty }) => {
     if (!room) room = Math.random().toString(36).substr(2, 6);
     if (!games[room]) {
-      games[room] = newGame(winScore);
+      games[room] = newGame(winScore, difficulty);
       startPowerupCycle(room, games[room]);
     }
     currentRoom = room;
@@ -197,7 +209,8 @@ io.on('connection', socket => {
       scores: game.scores,
       winScore: game.winScore,
       bigPaddleLeft: game.bigPaddleLeft,
-      bigPaddleRight: game.bigPaddleRight
+      bigPaddleRight: game.bigPaddleRight,
+      difficulty: game.difficulty
     });
   });
 
@@ -207,7 +220,7 @@ io.on('connection', socket => {
     let moveSide = game.players[socket.id];
     if (moveSide === 'left' || moveSide === 'right') {
       // Clamp paddle
-      let paddleH = (moveSide === 'left' ? game.bigPaddleLeft : game.bigPaddleRight) ? BIG_PADDLE_HEIGHT : PADDLE_HEIGHT;
+      let paddleH = (moveSide === 'left' ? game.bigPaddleLeft : game.bigPaddleRight) ? game.paddleHeight * 1.8 : game.paddleHeight;
       y = Math.max(0, Math.min(CANVAS_H - paddleH, y));
       game.paddles[moveSide] = y;
     }
@@ -222,7 +235,8 @@ io.on('connection', socket => {
   socket.on('restartGame', room => {
     if (!games[room]) return;
     let winScore = games[room].winScore;
-    games[room] = newGame(winScore);
+    let difficulty = games[room].difficulty;
+    games[room] = newGame(winScore, difficulty);
     startPowerupCycle(room, games[room]);
   });
 
