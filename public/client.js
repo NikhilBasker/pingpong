@@ -1,4 +1,4 @@
-const canvas = document.getElementById('pongCanvas');
+seconst canvas = document.getElementById('pongCanvas');
 const ctx = canvas.getContext('2d');
 const info = document.getElementById('info');
 const scoreLeft = document.getElementById('scoreLeft');
@@ -186,7 +186,7 @@ fullscreenBtn.onclick = () => {
 };
 
 canvas.addEventListener('mousemove', function(e) {
-  if (playerType === 'spectator' || paused) return;
+  if (playerType === 'spectator') return;
   const rect = canvas.getBoundingClientRect();
   let mouseY = e.clientY - rect.top;
   let paddleY = Math.max(0, Math.min(canvas.height - getPaddleHeight(bigPaddle[playerType]), mouseY - getPaddleHeight(bigPaddle[playerType])/2));
@@ -199,7 +199,7 @@ canvas.addEventListener('touchstart', handleTouch, { passive: false });
 canvas.addEventListener('touchmove', handleTouch, { passive: false });
 
 function handleTouch(e) {
-  if (playerType === 'spectator' || paused) return;
+  if (playerType === 'spectator') return;
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   for (let i = 0; i < e.touches.length; i++) {
@@ -249,7 +249,7 @@ moveDownBtn.addEventListener('mousedown', e => {
 });
 
 function movePaddle(direction) {
-  if (playerType === 'spectator' || paused) return;
+  if (playerType === 'spectator') return;
   let step = canvas.height * 0.06;
   let newY = Math.max(0, Math.min(canvas.height - getPaddleHeight(bigPaddle[playerType]), currentPaddleY + direction * step));
   currentPaddleY = newY;
@@ -302,9 +302,22 @@ function draw() {
     bigPaddle.right ? "#ff88cc" : "#ff3366"
   );
   drawCircle(ball.x + ball.size/2, ball.y + ball.size/2, ball.size/2, "#fff");
+
+  if (paused) {
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.floor(canvas.height / 8)}px Arial`;
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2);
+    ctx.restore();
+  }
 }
 function gameLoop() {
-  if (!paused) draw();
+  draw();
   requestAnimationFrame(gameLoop);
 }
 gameLoop();
