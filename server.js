@@ -30,7 +30,7 @@ function newGame(winScore, difficulty) {
   const params = getDifficultyParams(difficulty);
   return {
     difficulty: difficulty || "medium",
-    players: {},
+    players: {}, // socket.id -> 'left'/'right'/'spectator'
     sides: { left: null, right: null },
     paddles: { left: CANVAS_H/2 - params.paddleHeight/2, right: CANVAS_H/2 - params.paddleHeight/2 },
     scores: { left: 0, right: 0 },
@@ -184,7 +184,10 @@ io.on('connection', socket => {
     socket.join(room);
 
     let game = games[room];
-    if (!game.sides.left) {
+    // Prevent duplicate assignment
+    if (game.players[socket.id]) {
+      side = game.players[socket.id];
+    } else if (!game.sides.left) {
       game.sides.left = socket.id;
       game.players[socket.id] = 'left';
       side = 'left';
@@ -230,7 +233,11 @@ io.on('connection', socket => {
     if (!games[room]) return;
     let winScore = games[room].winScore;
     let difficulty = games[room].difficulty;
+    const oldGame = games[room];
     games[room] = newGame(winScore, difficulty);
+    // Preserve current players and sides
+    games[room].players = { ...oldGame.players };
+    games[room].sides = { ...oldGame.sides };
     startPowerupCycle(room, games[room]);
   });
 
